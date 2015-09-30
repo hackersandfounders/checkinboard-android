@@ -1,38 +1,40 @@
 package nl.hackersfounders.building;
 
-import android.hardware.usb.UsbDeviceConnection;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
-
-import com.hoho.android.usbserial.driver.UsbSerialDriver;
-import com.hoho.android.usbserial.driver.UsbSerialPort;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.UUID;
 
 /**
  * Created by Arjan Scherpenisse on 10-7-15.
  */
-class ReaderThread extends Thread {
+class BluetoothReaderThread extends Thread {
     private ReaderCallback callback;
+    private BluetoothDevice device;
+    private InputStream input;
+
+    private static final UUID BT_SERIAL_SSP = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
 
     interface ReaderCallback {
         void onTagRead(String tag);
-
+        void onError(Exception reason);
         void log(String message);
     }
 
     private static final String TAG = "ReaderThread";
+
     Handler mUI;
-    private UsbSerialDriver driver;
-    private UsbDeviceConnection connection;
+
     private boolean mRunning = true;
 
-    public ReaderThread(ReaderCallback callback, UsbSerialDriver driver, UsbDeviceConnection connection) {
+    public BluetoothReaderThread(ReaderCallback callback, BluetoothDevice device) {
         this.callback = callback;
+        this.device = device;
         this.mUI = new Handler(Looper.getMainLooper());
-        this.driver = driver;
-        this.connection = connection;
     }
 
     public void terminate() {
@@ -42,10 +44,12 @@ class ReaderThread extends Thread {
     @Override
     public void run() {
 
-        UsbSerialPort port = driver.getPorts().get(0);
         try {
-            port.open(connection);
-            port.setParameters(9600, UsbSerialPort.DATABITS_8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            mUI.post(new Log("Connecting to RFID reader..."));
+
+            BluetoothSocket socket = device.createRfcommSocketToServiceRecord(BT_SERIAL_SSP);
+            socket.connect();
+            input = socket.getInputStream();
 
             mUI.post(new Log("Starting read loop"));
 
@@ -55,7 +59,7 @@ class ReaderThread extends Thread {
 
             while (mRunning) {
                 byte buffer[] = new byte[16];
-                int numBytesRead = port.read(buffer, 1000);
+                int numBytesRead = input.read(buffer);
                 for (int i=0; i<numBytesRead; i++) {
                     if (!readingTag) {
                         if (buffer[i] == 2) {
@@ -85,14 +89,14 @@ class ReaderThread extends Thread {
                     }
                 }
             }
-        } catch (IOException e) {
+        } catch (final IOException e) {
             // Deal with error.
-        } finally {
-            try {
-                port.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            mUI.post(new Runnable() {
+                @Override
+                public void run() {
+                    callback.onError(e);
+                }
+            });
         }
     }
 

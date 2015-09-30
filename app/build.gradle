@@ -11,8 +11,8 @@ android {
         versionCode 1
         versionName "1.0"
 
-        buildConfigField "String", "WEBSITE", '"http://10.0.7.137:4000/"'
-        buildConfigField "String", "POST_URL", '"http://10.0.7.137:4000//api/tag"'
+        buildConfigField "String", "WEBSITE", '"http://building.hackersandfounders.nl/~arjan/board/#/board"'
+        buildConfigField "String", "POST_URL", '"http://10.0.7.22:4000//api/tag"'
 
     }
     buildTypes {
@@ -26,11 +26,11 @@ android {
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     compile 'com.android.support:appcompat-v7:22.1.1'
-    compile 'com.hoho.android:usb-serial-for-android:0.2.0-SNAPSHOT@aar'
 
     compile 'com.jakewharton:butterknife:6.1.0'
     compile 'com.squareup.picasso:picasso:2.3.4'
 
     compile 'com.squareup.okhttp:okhttp:2.4.0'
 
+    compile 'com.akexorcist:bluetoothspp:1.0.0@aar'
 }

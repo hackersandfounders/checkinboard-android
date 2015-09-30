@@ -1,17 +1,10 @@
 package nl.hackersfounders.building;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.res.AssetFileDescriptor;
-import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbDeviceConnection;
-import android.hardware.usb.UsbManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
@@ -26,30 +19,27 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
-import com.hoho.android.usbserial.driver.UsbSerialDriver;
-import com.hoho.android.usbserial.driver.UsbSerialProber;
-
-import java.util.List;
+import java.util.Set;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
+import butterknife.OnClick;
 
 
-public class MainActivity extends Activity implements ReaderThread.ReaderCallback {
+public class MainActivity extends Activity implements BluetoothReaderThread.ReaderCallback {
 
-    private UsbDeviceConnection mUsbConnection;
-    private ReaderThread mReaderThread;
-    private static final String ACTION_USB_PERMISSION =
-            "com.hackersandfounders.USB_PERMISSION";
+    private static final String DEVICE_NAME = "HC-06";
 
-    private PendingIntent mPermissionIntent;
+    private BluetoothReaderThread mReaderThread;
 
     @InjectView(R.id.webView)
     WebView webView;
 
-    private UsbManager mUsbManager;
-    private UsbSerialDriver mDriver;
+    @InjectView(R.id.errorBar)
+    View errorBar;
+
     private MediaPlayer mMediaPlayer;
+    private BluetoothAdapter mBlueAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,11 +47,6 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
         setContentView(R.layout.activity_main);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        mUsbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
-        mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
-        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
-        registerReceiver(mUsbReceiver, filter);
 
         ButterKnife.inject(this);
 
@@ -89,11 +74,18 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
 
         webView.loadUrl(BuildConfig.WEBSITE);
 
+        goFullscreen();
+
+        AudioManager mgr = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        mgr.setStreamVolume(AudioManager.STREAM_NOTIFICATION, mgr.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION), 0);
+
+        connectBluetooth();
+    }
+
+
+    protected void goFullscreen() {
+        // Full screen
         View decorView = getWindow().getDecorView();
-        // Hide both the navigation bar and the status bar.
-        // SYSTEM_UI_FLAG_FULLSCREEN is only available on Android 4.1 and higher, but as
-        // a general rule, you should design your app to hide the status bar whenever you
-        // hide the navigation bar.
         int uiOptions = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 | View.SYSTEM_UI_FLAG_FULLSCREEN;
@@ -103,53 +95,35 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
     @Override
     protected void onResume() {
         super.onResume();
-        connectUSB();
+        goFullscreen();
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
+    protected void onDestroy() {
         if (mReaderThread != null) {
             mReaderThread.terminate();
+            mReaderThread = null;
+        }
+
+        super.onDestroy();
+    }
+
+    private void connectBluetooth() {
+
+        errorBar.setVisibility(View.GONE);
+        mBlueAdapter = BluetoothAdapter.getDefaultAdapter();
+        Set<BluetoothDevice> paired = mBlueAdapter.getBondedDevices();
+        for (BluetoothDevice device : paired) {
+            if (DEVICE_NAME.equals(device.getName())) {
+                mReaderThread = new BluetoothReaderThread(this, device);
+                mReaderThread.start();
+            }
         }
     }
 
-    private void connectUSB() {
-        List<UsbSerialDriver> availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(mUsbManager);
-        if (availableDrivers.isEmpty()) {
-            finishError("No USB device present");
-            return;
-        }
-
-        // Open a connection to the first available driver.
-        mDriver = availableDrivers.get(0);
-        UsbDeviceConnection mUsbConnection = mUsbManager.openDevice(mDriver.getDevice());
-        if (mUsbConnection == null) {
-            mUsbManager.requestPermission(mDriver.getDevice(), mPermissionIntent);
-            return;
-        }
-
-        startReaderThread(mUsbConnection);
-    }
-
-    private void startReaderThread(UsbDeviceConnection connection) {
-        mReaderThread = new ReaderThread(this, mDriver, connection);
-        mReaderThread.start();
-    }
-
-    private void finishError(String message) {
-        new AlertDialog.Builder(this)
-                .setTitle("Error")
-                .setMessage(message)
-                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        dialogInterface.dismiss();
-                        //finish();
-                    }
-                })
-                .setCancelable(false)
-                .show();
+    @OnClick(R.id.retryButton)
+    public void onRetry() {
+        connectBluetooth();
     }
 
     @Override
@@ -165,31 +139,17 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
     }
 
     @Override
+    public void onError(Exception e) {
+        Toast.makeText(MainActivity.this, "Bluetooth connection failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        errorBar.setVisibility(View.VISIBLE);
+        mReaderThread = null;
+    }
+
+    @Override
     public void log(String message) {
         String s = "" + System.currentTimeMillis() + ": " + message;
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
-
-
-    private final BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
-
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (ACTION_USB_PERMISSION.equals(action)) {
-                synchronized (this) {
-                    UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-
-                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                        if (device != null) {
-                            startReaderThread(mUsbManager.openDevice(device));
-                        }
-                    } else {
-                        log("Permission denied for device " + device);
-                    }
-                }
-            }
-        }
-    };
 
 
     private class BoardFeedbackInterface {
@@ -199,8 +159,9 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    log("Play checkin sound");
+                    //log("Play checkin sound");
                     playSample(R.raw.sign_in);
+                    //playNotificationSound(MainActivity.this);
                 }
             });
         }
@@ -210,7 +171,7 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    log("Play checkout sound");
+                    //log("Play checkout sound");
                     playSample(R.raw.sign_out);
                 }
             });
@@ -225,9 +186,22 @@ public class MainActivity extends Activity implements ReaderThread.ReaderCallbac
             mMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getDeclaredLength());
             mMediaPlayer.prepare();
             mMediaPlayer.start();
+            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_NOTIFICATION);
+            mMediaPlayer.setVolume(1f, 1f);
             afd.close();
         } catch (Throwable e) {
             e.printStackTrace();
         }
     }
+
+    public static void playNotificationSound(Context context) {
+        try {
+            Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            Ringtone r = RingtoneManager.getRingtone(context, notification);
+            r.play();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 }
