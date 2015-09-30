@@ -24,6 +24,7 @@ import java.util.Set;
 import butterknife.ButterKnife;
 import butterknife.InjectView;
 import butterknife.OnClick;
+import butterknife.OnLongClick;
 
 
 public class MainActivity extends Activity implements BluetoothReaderThread.ReaderCallback {
@@ -82,6 +83,11 @@ public class MainActivity extends Activity implements BluetoothReaderThread.Read
         connectBluetooth();
     }
 
+    @OnLongClick(R.id.refreshButton)
+    public boolean onRefreshClick() {
+        webView.loadUrl(BuildConfig.WEBSITE);
+        return true;
+    }
 
     protected void goFullscreen() {
         // Full screen
