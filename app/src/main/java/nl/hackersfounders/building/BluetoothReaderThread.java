@@ -51,7 +51,7 @@ class BluetoothReaderThread extends Thread {
             socket.connect();
             input = socket.getInputStream();
 
-            mUI.post(new Log("Starting read loop"));
+            mUI.post(new Log("Ready for tags"));
 
             byte tagBuffer[] = new byte[32];
             boolean readingTag = false;
@@ -89,6 +89,11 @@ class BluetoothReaderThread extends Thread {
                     }
                 }
             }
+
+            input.close();
+            socket.close();
+            mUI.post(new Log("Stopped RFID reader"));
+
         } catch (final IOException e) {
             // Deal with error.
             mUI.post(new Runnable() {

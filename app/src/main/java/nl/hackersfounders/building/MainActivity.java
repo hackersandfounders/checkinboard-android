@@ -80,12 +80,17 @@ public class MainActivity extends Activity implements BluetoothReaderThread.Read
         AudioManager mgr = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         mgr.setStreamVolume(AudioManager.STREAM_NOTIFICATION, mgr.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION), 0);
 
-        connectBluetooth();
     }
 
     @OnLongClick(R.id.refreshButton)
     public boolean onRefreshClick() {
         webView.loadUrl(BuildConfig.WEBSITE);
+        return true;
+    }
+
+    @OnLongClick(R.id.resetButton)
+    public boolean onResetClick() {
+        finish();
         return true;
     }
 
@@ -102,16 +107,27 @@ public class MainActivity extends Activity implements BluetoothReaderThread.Read
     protected void onResume() {
         super.onResume();
         goFullscreen();
+
+        connectBluetooth();
+
     }
 
+
     @Override
-    protected void onDestroy() {
+    protected void onPause() {
+        super.onPause();
         if (mReaderThread != null) {
+            Toast.makeText(MainActivity.this, "Stopping RFID reader", Toast.LENGTH_SHORT).show();
             mReaderThread.terminate();
             mReaderThread = null;
         }
 
-        super.onDestroy();
+        android.os.Process.killProcess(android.os.Process.myPid());
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
     }
 
     private void connectBluetooth() {

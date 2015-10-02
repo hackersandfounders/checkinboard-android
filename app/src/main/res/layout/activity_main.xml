@@ -37,4 +37,11 @@
         android:layout_width="50dp"
         android:layout_height="50dp"
         android:layout_gravity="left|bottom" />
+
+    <View
+        android:id="@+id/resetButton"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="top|right" />
+
 </FrameLayout>
